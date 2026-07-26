@@ -11,13 +11,11 @@ import {
   Database, RefreshCw, Lock, ChevronDown
 } from 'lucide-react';
 
-// Firebase Integrations
 import { initializeApp } from 'firebase/app';
 import { getAnalytics } from "firebase/analytics";
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection } from 'firebase/firestore';
 
-// Konfigurasi Firebase Anda
 const firebaseConfig = {
   apiKey: "AIzaSyDfee6kBJ7CeHUGKuZsneDElbwcymBgxrw",
   authDomain: "ktri-app.firebaseapp.com",
@@ -37,17 +35,27 @@ const db = getFirestore(app);
 const COLLECTION_NAME = 'ktri_assessments';
 
 const COLORS = {
-  emerald: '#10b981', // 81-100 Champion
-  blue: '#3b82f6',    // 61-80 Siap
-  orange: '#f59e0b',  // 41-60 Perlu Pendampingan
-  red: '#ef4444'      // 0-40 Pendampingan Intensif
+  emerald: '#10b981', // 81-100 Agen Perubahan
+  blue: '#3b82f6',    // 61-80 Siap Bertransformasi
+  yellow: '#eab308',  // 41-60 Berkembang
+  orange: '#f59e0b',  // 21-40 Mulai Siap
+  red: '#ef4444'      // 0-20 Belum Siap
 };
 
 const getCategory = (score) => {
-  if (score >= 81) return { label: 'Champion Teacher', color: 'bg-emerald-100 text-emerald-800 border-emerald-200', hex: COLORS.emerald, bgHex: '#d1fae5' };
-  if (score >= 61) return { label: 'Siap Implementasi', color: 'bg-blue-100 text-blue-800 border-blue-200', hex: COLORS.blue, bgHex: '#dbeafe' };
-  if (score >= 41) return { label: 'Perlu Pendampingan', color: 'bg-orange-100 text-orange-800 border-orange-200', hex: COLORS.orange, bgHex: '#fef3c7' };
-  return { label: 'Pendampingan Intensif', color: 'bg-red-100 text-red-800 border-red-200', hex: COLORS.red, bgHex: '#fee2e2' };
+  if (score >= 81) return { label: 'Agen Perubahan', color: 'bg-emerald-100 text-emerald-800 border-emerald-200', hex: COLORS.emerald, bgHex: '#d1fae5' };
+  if (score >= 61) return { label: 'Siap Bertransformasi', color: 'bg-blue-100 text-blue-800 border-blue-200', hex: COLORS.blue, bgHex: '#dbeafe' };
+  if (score >= 41) return { label: 'Berkembang', color: 'bg-yellow-100 text-yellow-800 border-yellow-200', hex: COLORS.yellow, bgHex: '#fef08a' };
+  if (score >= 21) return { label: 'Mulai Siap', color: 'bg-orange-100 text-orange-800 border-orange-200', hex: COLORS.orange, bgHex: '#ffedd5' };
+  return { label: 'Belum Siap', color: 'bg-red-100 text-red-800 border-red-200', hex: COLORS.red, bgHex: '#fee2e2' };
+};
+
+const SiapLogo = ({ className = "w-10 h-10" }) => {
+  const [error, setError] = useState(false);
+  // TODO: Ganti /logo-siap.png dengan file yang diupload ke folder public jika belum ada.
+  // Akan fallback ke Icon otomatis jika gambar gagal dimuat.
+  if (error) return <CheckCircle className={`text-emerald-600 ${className}`} />;
+  return <img src="/logo-siap.png" alt="Logo SIAP" className={`object-contain ${className}`} onError={() => setError(true)} />;
 };
 
 const Card = ({ children, className = "", noPadding = false }) => (
@@ -81,21 +89,23 @@ const Button = ({ children, onClick, variant = 'primary', className = "", disabl
 
 const AdminDashboard = ({ data }) => {
   const totalTeachers = data.length;
-  const categoriesCount = { champion: 0, ready: 0, coaching: 0, intensive: 0 };
-  let totals = { kma: 0, kbc: 0, practice: 0, mindset: 0, readiness: 0 };
+  const categoriesCount = { agen: 0, siap: 0, berkembang: 0, mulai: 0, belum: 0 };
+  let totals = { mindset: 0, kma: 0, pedagogical: 0, digital: 0, kflf: 0, transformation: 0 };
   let weaknessesCount = {};
 
   data.forEach(t => {
-    if (t.scores.overall >= 81) categoriesCount.champion++;
-    else if (t.scores.overall >= 61) categoriesCount.ready++;
-    else if (t.scores.overall >= 41) categoriesCount.coaching++;
-    else categoriesCount.intensive++;
+    if (t.scores.overall >= 81) categoriesCount.agen++;
+    else if (t.scores.overall >= 61) categoriesCount.siap++;
+    else if (t.scores.overall >= 41) categoriesCount.berkembang++;
+    else if (t.scores.overall >= 21) categoriesCount.mulai++;
+    else categoriesCount.belum++;
 
-    totals.kma += t.scores.kma;
-    totals.kbc += t.scores.kbc;
-    totals.practice += t.scores.practice;
-    totals.mindset += t.scores.mindset;
-    totals.readiness += t.scores.readiness;
+    totals.mindset += t.scores.mindset || 0;
+    totals.kma += t.scores.kma || 0;
+    totals.pedagogical += t.scores.pedagogical || 0;
+    totals.digital += t.scores.digital || 0;
+    totals.kflf += t.scores.kflf || 0;
+    totals.transformation += t.scores.transformation || 0;
 
     if (t.weaknesses) {
       t.weaknesses.forEach(w => {
@@ -105,18 +115,20 @@ const AdminDashboard = ({ data }) => {
   });
 
   const radarData = [
-    { subject: 'KMA 1503', A: totalTeachers ? totals.kma / totalTeachers : 0, fullMark: 100 },
-    { subject: 'Kurikulum KBC', A: totalTeachers ? totals.kbc / totalTeachers : 0, fullMark: 100 },
-    { subject: 'Praktik Belajar', A: totalTeachers ? totals.practice / totalTeachers : 0, fullMark: 100 },
     { subject: 'Mindset', A: totalTeachers ? totals.mindset / totalTeachers : 0, fullMark: 100 },
-    { subject: 'Kesiapan', A: totalTeachers ? totals.readiness / totalTeachers : 0, fullMark: 100 },
+    { subject: 'KMA 1503', A: totalTeachers ? totals.kma / totalTeachers : 0, fullMark: 100 },
+    { subject: 'Pedagogical', A: totalTeachers ? totals.pedagogical / totalTeachers : 0, fullMark: 100 },
+    { subject: 'Digital & AI', A: totalTeachers ? totals.digital / totalTeachers : 0, fullMark: 100 },
+    { subject: 'KFLF', A: totalTeachers ? totals.kflf / totalTeachers : 0, fullMark: 100 },
+    { subject: 'Transformasi', A: totalTeachers ? totals.transformation / totalTeachers : 0, fullMark: 100 },
   ];
 
   const pieData = [
-    { name: 'Champion', value: categoriesCount.champion, color: COLORS.emerald },
-    { name: 'Siap', value: categoriesCount.ready, color: COLORS.blue },
-    { name: 'Coaching', value: categoriesCount.coaching, color: COLORS.orange },
-    { name: 'Intensif', value: categoriesCount.intensive, color: COLORS.red },
+    { name: 'Agen Perubahan', value: categoriesCount.agen, color: COLORS.emerald },
+    { name: 'Siap', value: categoriesCount.siap, color: COLORS.blue },
+    { name: 'Berkembang', value: categoriesCount.berkembang, color: COLORS.yellow },
+    { name: 'Mulai Siap', value: categoriesCount.mulai, color: COLORS.orange },
+    { name: 'Belum Siap', value: categoriesCount.belum, color: COLORS.red },
   ].filter(d => d.value > 0);
 
   const priorityTopics = Object.keys(weaknessesCount).map(topic => {
@@ -126,8 +138,10 @@ const AdminDashboard = ({ data }) => {
     let type = 'Workshop';
     let icon = ClipboardList;
     if (topic.includes('KMA')) { type = 'In-House Training'; icon = Map; }
-    else if (topic.includes('KBC')) { type = 'Mentoring Khusus'; icon = Users; }
-    else if (topic.includes('Praktik')) { type = 'Peer Coaching'; icon = Activity; }
+    else if (topic.includes('Pedagogik')) { type = 'Mentoring Khusus'; icon = Users; }
+    else if (topic.includes('Digital')) { type = 'Pelatihan Teknis'; icon = Activity; }
+    else if (topic.includes('KFLF')) { type = 'FGD Framework'; icon = Target; }
+    else if (topic.includes('Mindset') || topic.includes('Transformasi')) { type = 'Sesi Motivasi'; icon = Brain; }
 
     return { topic, issuePercentage: impactPercentage, type, icon };
   }).sort((a, b) => b.issuePercentage - a.issuePercentage).slice(0, 3);
@@ -140,8 +154,8 @@ const AdminDashboard = ({ data }) => {
     <div className="space-y-6">
       <div className="mb-2 flex justify-between items-end">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard Transformasi</h1>
-          <p className="text-gray-500 text-sm mt-1">Status Kesiapan Implementasi KMA 1503 & KBC</p>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard SIAP</h1>
+          <p className="text-gray-500 text-sm mt-1">Sistem Indeks Asesmen Pendidik - Khairul Falah</p>
         </div>
         <div className="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200 flex items-center">
           <Database className="w-4 h-4 mr-1.5" /> {totalTeachers} Data Guru
@@ -152,62 +166,72 @@ const AdminDashboard = ({ data }) => {
         <Card className="text-center py-16 border-dashed border-2 border-gray-300">
           <Database className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-gray-700 mb-2">Belum Ada Data Asesmen</h3>
-          <p className="text-gray-500 max-w-sm mx-auto">Silakan minta guru-guru untuk login dan mengisi asesmen mandiri. Data akan muncul di sini secara otomatis.</p>
+          <p className="text-gray-500 max-w-sm mx-auto">Silakan minta guru-guru untuk login dan mengisi asesmen SIAP. Data akan muncul di sini secara otomatis.</p>
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
             <Card noPadding className="bg-gradient-to-br from-emerald-50 to-white border-emerald-100 overflow-hidden relative">
-              <div className="p-4 sm:p-5">
+              <div className="p-4 sm:p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-emerald-900 text-sm font-bold">Champion</h3>
-                  <Award className="w-5 h-5 text-emerald-500" />
+                  <h3 className="text-emerald-900 text-[11px] uppercase tracking-wider font-bold">Agen</h3>
+                  <Award className="w-4 h-4 text-emerald-500" />
                 </div>
-                <p className="text-4xl font-extrabold text-emerald-600">{categoriesCount.champion}</p>
+                <p className="text-3xl font-extrabold text-emerald-600">{categoriesCount.agen}</p>
               </div>
-              <div className="bg-emerald-100/50 px-4 py-2 text-xs font-semibold text-emerald-700">Skor 81-100</div>
+              <div className="bg-emerald-100/50 px-4 py-1.5 text-[10px] font-bold text-emerald-700">Skor 81-100</div>
             </Card>
             <Card noPadding className="bg-gradient-to-br from-blue-50 to-white border-blue-100 overflow-hidden relative">
-              <div className="p-4 sm:p-5">
+              <div className="p-4 sm:p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-blue-900 text-sm font-bold">Siap</h3>
-                  <CheckCircle className="w-5 h-5 text-blue-500" />
+                  <h3 className="text-blue-900 text-[11px] uppercase tracking-wider font-bold">Siap</h3>
+                  <CheckCircle className="w-4 h-4 text-blue-500" />
                 </div>
-                <p className="text-4xl font-extrabold text-blue-600">{categoriesCount.ready}</p>
+                <p className="text-3xl font-extrabold text-blue-600">{categoriesCount.siap}</p>
               </div>
-              <div className="bg-blue-100/50 px-4 py-2 text-xs font-semibold text-blue-700">Skor 61-80</div>
+              <div className="bg-blue-100/50 px-4 py-1.5 text-[10px] font-bold text-blue-700">Skor 61-80</div>
+            </Card>
+            <Card noPadding className="bg-gradient-to-br from-yellow-50 to-white border-yellow-100 overflow-hidden relative">
+              <div className="p-4 sm:p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-yellow-900 text-[11px] uppercase tracking-wider font-bold">Berkembang</h3>
+                  <Activity className="w-4 h-4 text-yellow-500" />
+                </div>
+                <p className="text-3xl font-extrabold text-yellow-600">{categoriesCount.berkembang}</p>
+              </div>
+              <div className="bg-yellow-100/50 px-4 py-1.5 text-[10px] font-bold text-yellow-700">Skor 41-60</div>
             </Card>
             <Card noPadding className="bg-gradient-to-br from-orange-50 to-white border-orange-100 overflow-hidden relative">
-              <div className="p-4 sm:p-5">
+              <div className="p-4 sm:p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-orange-900 text-sm font-bold">Coaching</h3>
-                  <Users className="w-5 h-5 text-orange-500" />
+                  <h3 className="text-orange-900 text-[11px] uppercase tracking-wider font-bold">Mulai</h3>
+                  <Users className="w-4 h-4 text-orange-500" />
                 </div>
-                <p className="text-4xl font-extrabold text-orange-600">{categoriesCount.coaching}</p>
+                <p className="text-3xl font-extrabold text-orange-600">{categoriesCount.mulai}</p>
               </div>
-              <div className="bg-orange-100/50 px-4 py-2 text-xs font-semibold text-orange-700">Skor 41-60</div>
+              <div className="bg-orange-100/50 px-4 py-1.5 text-[10px] font-bold text-orange-700">Skor 21-40</div>
             </Card>
             <Card noPadding className="bg-gradient-to-br from-red-50 to-white border-red-100 overflow-hidden relative">
-              <div className="p-4 sm:p-5">
+              <div className="p-4 sm:p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-red-900 text-sm font-bold">Intensif</h3>
-                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                  <h3 className="text-red-900 text-[11px] uppercase tracking-wider font-bold">Belum</h3>
+                  <AlertTriangle className="w-4 h-4 text-red-500" />
                 </div>
-                <p className="text-4xl font-extrabold text-red-600">{categoriesCount.intensive}</p>
+                <p className="text-3xl font-extrabold text-red-600">{categoriesCount.belum}</p>
               </div>
-              <div className="bg-red-100/50 px-4 py-2 text-xs font-semibold text-red-700">Skor 0-40</div>
+              <div className="bg-red-100/50 px-4 py-1.5 text-[10px] font-bold text-red-700">Skor 0-20</div>
             </Card>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
-              <h3 className="text-base font-bold text-gray-800 mb-6">Peta Kompetensi Rata-rata</h3>
+              <h3 className="text-base font-bold text-gray-800 mb-6">Peta Kesiapan SIAP Rata-rata</h3>
               <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
                     <PolarGrid stroke="#f3f4f6" />
                     <PolarAngleAxis dataKey="subject" tick={{ fill: '#6b7280', fontSize: 11, fontWeight: 600 }} />
-                    <Radar name="Rata-rata Sekolah" dataKey="A" stroke="#10b981" strokeWidth={2} fill="#10b981" fillOpacity={0.2} />
+                    <Radar name="Rata-rata Madrasah" dataKey="A" stroke="#10b981" strokeWidth={2} fill="#10b981" fillOpacity={0.2} />
                     <RechartsTooltip cursor={{fill: '#f3f4f6'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
                   </RadarChart>
                 </ResponsiveContainer>
@@ -215,7 +239,7 @@ const AdminDashboard = ({ data }) => {
             </Card>
 
             <Card>
-              <h3 className="text-base font-bold text-gray-800 mb-6">Distribusi Kesiapan Guru</h3>
+              <h3 className="text-base font-bold text-gray-800 mb-6">Distribusi Level SIAP</h3>
               <div className="h-[280px] w-full flex items-center justify-center">
                 {pieData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -243,7 +267,7 @@ const AdminDashboard = ({ data }) => {
                 <Brain className="w-6 h-6 text-emerald-400 mr-2" />
                 <h3 className="text-xl font-bold text-white">Training Priority Engine</h3>
               </div>
-              <p className="text-gray-400 text-sm mb-6 max-w-lg">Sistem AI merekomendasikan prioritas intervensi pelatihan berdasarkan analisis area terlemah kolektif.</p>
+              <p className="text-gray-400 text-sm mb-6 max-w-lg">Sistem AI merekomendasikan prioritas intervensi pelatihan berdasarkan analisis area terlemah kolektif pada SIAP.</p>
               
               <div className="space-y-3">
                 {priorityTopics.map((p, idx) => (
@@ -287,23 +311,24 @@ const ReadinessMap = ({ data }) => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Readiness Map</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Readiness Map (SIAP)</h1>
           <p className="text-gray-500 text-sm mt-1">Heatmap kesiapan per individu (Skor 0-100)</p>
         </div>
       </div>
 
       <Card noPadding className="overflow-x-auto shadow-sm border border-gray-200">
-        <table className="w-full text-left border-collapse min-w-[800px]">
+        <table className="w-full text-left border-collapse min-w-[1000px]">
           <thead>
             <tr className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider border-b">
               <th className="p-4 font-bold">Nama Guru & Mapel</th>
-              <th className="p-4 font-bold text-center w-24">KMA 1503</th>
-              <th className="p-4 font-bold text-center w-24">Kurik. KBC</th>
-              <th className="p-4 font-bold text-center w-24">Praktik</th>
-              <th className="p-4 font-bold text-center w-24">Mindset</th>
-              <th className="p-4 font-bold text-center w-24">Kesiapan</th>
-              <th className="p-4 font-bold text-center bg-gray-100 w-28">Skor Akhir</th>
-              <th className="p-4 font-bold">Kategori</th>
+              <th className="p-4 font-bold text-center w-20">Mindset</th>
+              <th className="p-4 font-bold text-center w-20">KMA 1503</th>
+              <th className="p-4 font-bold text-center w-20">Pedagogi</th>
+              <th className="p-4 font-bold text-center w-20">Digital/AI</th>
+              <th className="p-4 font-bold text-center w-20">KFLF</th>
+              <th className="p-4 font-bold text-center w-20">Transform</th>
+              <th className="p-4 font-bold text-center bg-gray-100 w-24">Skor Akhir</th>
+              <th className="p-4 font-bold w-36">Kategori</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 text-sm">
@@ -314,12 +339,13 @@ const ReadinessMap = ({ data }) => {
                 let bg = "bg-red-100 text-red-800";
                 if (score >= 81) bg = "bg-emerald-100 text-emerald-800";
                 else if (score >= 61) bg = "bg-blue-100 text-blue-800";
-                else if (score >= 41) bg = "bg-orange-100 text-orange-800";
+                else if (score >= 41) bg = "bg-yellow-100 text-yellow-800";
+                else if (score >= 21) bg = "bg-orange-100 text-orange-800";
                 
                 return (
                   <td className="p-2 text-center">
                     <div className={`w-full py-2 rounded-lg font-bold ${bg} border border-white/20`}>
-                      {Math.round(score)}
+                      {Math.round(score || 0)}
                     </div>
                   </td>
                 );
@@ -331,11 +357,12 @@ const ReadinessMap = ({ data }) => {
                     <div className="font-bold text-gray-900">{teacher.name}</div>
                     <div className="text-xs text-gray-500 font-medium">{teacher.subject} ({teacher.experience})</div>
                   </td>
-                  <ScoreCell score={teacher.scores.kma} />
-                  <ScoreCell score={teacher.scores.kbc} />
-                  <ScoreCell score={teacher.scores.practice} />
                   <ScoreCell score={teacher.scores.mindset} />
-                  <ScoreCell score={teacher.scores.readiness} />
+                  <ScoreCell score={teacher.scores.kma} />
+                  <ScoreCell score={teacher.scores.pedagogical} />
+                  <ScoreCell score={teacher.scores.digital} />
+                  <ScoreCell score={teacher.scores.kflf} />
+                  <ScoreCell score={teacher.scores.transformation} />
                   <td className="p-2 text-center bg-gray-50">
                     <div className="w-full py-2 rounded-lg font-black text-gray-900 text-base">
                       {Math.round(teacher.scores.overall)}
@@ -352,11 +379,12 @@ const ReadinessMap = ({ data }) => {
       </Card>
       
       <div className="flex flex-wrap gap-4 text-xs font-medium text-gray-600 bg-white p-4 rounded-xl border border-gray-100">
-        <span className="mr-2 font-bold">Legenda Heatmap:</span>
+        <span className="mr-2 font-bold">Legenda Skor:</span>
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-emerald-500"></div> 81-100 (Sangat Kuat)</div>
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-500"></div> 61-80 (Kuat)</div>
-        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-orange-500"></div> 41-60 (Cukup)</div>
-        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-red-500"></div> 0-40 (Kurang)</div>
+        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-yellow-400"></div> 41-60 (Menengah)</div>
+        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-orange-500"></div> 21-40 (Kurang)</div>
+        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-red-500"></div> 0-20 (Sangat Kurang)</div>
       </div>
     </div>
   );
@@ -364,7 +392,7 @@ const ReadinessMap = ({ data }) => {
 
 const ChampionModule = ({ data }) => {
   const champions = data.filter(t => t.scores.overall >= 81).sort((a,b) => b.scores.overall - a.scores.overall);
-  const coaching = data.filter(t => t.scores.overall < 61).sort((a,b) => a.scores.overall - b.scores.overall);
+  const coaching = data.filter(t => t.scores.overall <= 60).sort((a,b) => a.scores.overall - b.scores.overall);
 
   if (data.length === 0) return (
     <div className="flex items-center justify-center h-[50vh] text-gray-400 font-bold">Belum Ada Data Asesmen</div>
@@ -374,7 +402,7 @@ const ChampionModule = ({ data }) => {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Manajemen SDM</h1>
-        <p className="text-gray-500 text-sm mt-1">Kandidat Champion & Target Pendampingan</p>
+        <p className="text-gray-500 text-sm mt-1">Agen Perubahan & Target Pendampingan SIAP</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -384,13 +412,13 @@ const ChampionModule = ({ data }) => {
               <Award className="w-8 h-8 text-emerald-600" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-emerald-900">Champion Teachers</h2>
+              <h2 className="text-xl font-bold text-emerald-900">Agen Perubahan</h2>
               <p className="text-emerald-700 text-xs font-medium">Siap menjadi penggerak dan mentor</p>
             </div>
           </div>
           
           <div className="space-y-3">
-            {champions.length === 0 && <p className="text-gray-500 text-center py-8">Belum ada Champion</p>}
+            {champions.length === 0 && <p className="text-gray-500 text-center py-8">Belum ada Agen Perubahan</p>}
             {champions.map((c, i) => (
               <div key={c.userId} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-emerald-100">
                 <div className="flex items-center gap-4">
@@ -403,7 +431,7 @@ const ChampionModule = ({ data }) => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-emerald-600 font-bold mb-1 uppercase tracking-wider">Skor</div>
+                  <div className="text-xs text-emerald-600 font-bold mb-1 uppercase tracking-wider">Skor SIAP</div>
                   <div className="font-black text-emerald-600 text-2xl leading-none">{Math.round(c.scores.overall)}</div>
                 </div>
               </div>
@@ -418,12 +446,12 @@ const ChampionModule = ({ data }) => {
             </div>
             <div>
               <h2 className="text-xl font-bold text-orange-900">Coaching Candidates</h2>
-              <p className="text-orange-700 text-xs font-medium">Prioritas pendampingan intensif & khusus</p>
+              <p className="text-orange-700 text-xs font-medium">Prioritas pendampingan bagi yang Berkembang/Kurang</p>
             </div>
           </div>
           
           <div className="space-y-3">
-            {coaching.length === 0 && <p className="text-gray-500 text-center py-8">Semua guru sudah memadai</p>}
+            {coaching.length === 0 && <p className="text-gray-500 text-center py-8">Semua guru dalam kategori Siap/Agen</p>}
             {coaching.map((c) => (
               <div key={c.userId} className="bg-white p-4 rounded-2xl shadow-sm border border-orange-100 flex flex-col gap-3">
                 <div className="flex justify-between items-start">
@@ -431,7 +459,7 @@ const ChampionModule = ({ data }) => {
                     <div className="font-bold text-gray-900">{c.name}</div>
                     <div className="text-xs text-gray-500 font-medium">{c.subject}</div>
                   </div>
-                  <Badge colorClass={c.scores.overall <= 40 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}>
+                  <Badge colorClass={c.scores.overall <= 40 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}>
                     Skor: {Math.round(c.scores.overall)}
                   </Badge>
                 </div>
@@ -455,62 +483,78 @@ const ASSESSMENT_STEPS = [
     id: 'profile', title: 'Profil Anda', description: 'Mari mulai dengan informasi dasar Anda',
     questions: [
       { id: 'name', type: 'text', label: 'Nama Lengkap' },
-      { id: 'subject', type: 'select', label: 'Mata Pelajaran Utama', options: ['Matematika', 'IPA', 'IPS', 'Bahasa Indonesia', 'Bahasa Inggris', 'Pendidikan Agama Islam', 'Olahraga', 'Seni Budaya', 'Lainnya'] },
+      { id: 'subject', type: 'select', label: 'Mata Pelajaran Utama', options: ['Matematika', 'IPA', 'IPS', 'Bahasa Indonesia', 'Bahasa Inggris', 'Pendidikan Agama Islam', 'Olahraga', 'Seni Budaya', 'Guru Kelas', 'Lainnya'] },
       { id: 'experience', type: 'select', label: 'Lama Mengajar', options: ['< 1 Tahun', '1-5 Tahun', '5-10 Tahun', '> 10 Tahun'] }
     ]
   },
   {
-    id: 'kma', title: 'Pemahaman KMA 1503', description: 'Nilai dari 1 (Sangat Tidak Paham) s.d 5 (Sangat Paham)',
+    id: 'mindset', title: 'Domain A: Mindset & Growth', description: 'Nilai dari 1 (Sangat Tidak Setuju) s.d 5 (Sangat Setuju)',
     questions: [
-      { id: 'kma_1', type: 'scale', label: 'Saya memahami tujuan KMA 1503 Tahun 2025' },
-      { id: 'kma_2', type: 'scale', label: 'Saya memahami perubahan struktur kurikulum' },
-      { id: 'kma_3', type: 'scale', label: 'Saya memahami profil lulusan yang diharapkan' },
-      { id: 'kma_4', type: 'scale', label: 'Saya memahami konsep Pembelajaran Mendalam (Deep Learning)' },
-      { id: 'kma_5', type: 'scale', label: 'Saya memahami implementasi kokurikuler' }
+      { id: 'min_1', type: 'scale', label: 'Saya terbuka terhadap perubahan dalam dunia pendidikan.' },
+      { id: 'min_2', type: 'scale', label: 'Saya bersedia mempelajari pendekatan pembelajaran baru.' },
+      { id: 'min_3', type: 'scale', label: 'Saya melihat perubahan sebagai peluang untuk berkembang.' },
+      { id: 'min_4', type: 'scale', label: 'Saya aktif mencari cara meningkatkan kualitas pembelajaran.' },
+      { id: 'min_5', type: 'scale', label: 'Saya siap keluar dari zona nyaman untuk menjadi guru yang lebih baik.' }
     ]
   },
   {
-    id: 'kbc', title: 'Kurikulum Berbasis Cinta', description: 'Nilai dari 1 (Sangat Tidak Paham) s.d 5 (Sangat Paham)',
+    id: 'kma', title: 'Domain B: KMA 1503 Readiness', description: 'Nilai dari 1 (Sangat Tidak Setuju) s.d 5 (Sangat Setuju)',
     questions: [
-      { id: 'kbc_1', type: 'scale', label: 'Saya memahami filosofi cinta dalam pendidikan' },
-      { id: 'kbc_2', type: 'scale', label: 'Saya memahami peran guru sebagai murabbi' },
-      { id: 'kbc_3', type: 'scale', label: 'Saya memahami pentingnya relasi empatik guru dan siswa' },
-      { id: 'kbc_4', type: 'scale', label: 'Saya mampu merancang pembelajaran bermakna' },
-      { id: 'kbc_5', type: 'scale', label: 'Saya rutin melakukan refleksi pembelajaran bersama siswa' }
+      { id: 'kma_1', type: 'scale', label: 'Saya memahami arah kebijakan KMA Nomor 1503 Tahun 2025.' },
+      { id: 'kma_2', type: 'scale', label: 'Saya memahami konsep Pembelajaran Mendalam (Deep Learning).' },
+      { id: 'kma_3', type: 'scale', label: 'Saya memahami prinsip Kurikulum Berbasis Cinta.' },
+      { id: 'kma_4', type: 'scale', label: 'Saya memahami pentingnya pembelajaran yang bermakna dan reflektif.' },
+      { id: 'kma_5', type: 'scale', label: 'Saya memahami perkembangan asesmen terbaru di madrasah.' }
     ]
   },
   {
-    id: 'practice', title: 'Praktik Pembelajaran', description: 'Pilih praktik yang sudah rutin Anda terapkan (Bisa lebih dari satu)',
+    id: 'pedagogical', title: 'Domain C: Pedagogical Readiness', description: 'Nilai dari 1 (Sangat Tidak Setuju) s.d 5 (Sangat Setuju)',
     questions: [
-      { id: 'prac_list', type: 'checkboxGroup', options: [
-        'Project Based Learning (PBL)', 
-        'Refleksi Siswa Berkala', 
-        'Portfolio Siswa', 
-        'Asesmen Non-Tes / Observasi', 
-        'Kolaborasi Aktif dengan Orang Tua', 
-        'Pembelajaran Kontekstual', 
-        'Presentasi Siswa'
-      ]}
+      { id: 'ped_1', type: 'scale', label: 'Saya mampu merancang pembelajaran yang aktif dan bermakna.' },
+      { id: 'ped_2', type: 'scale', label: 'Saya mampu menggunakan berbagai strategi pembelajaran.' },
+      { id: 'ped_3', type: 'scale', label: 'Saya mampu melakukan asesmen formatif selama pembelajaran.' },
+      { id: 'ped_4', type: 'scale', label: 'Saya mampu memfasilitasi diskusi dan kolaborasi siswa.' },
+      { id: 'ped_5', type: 'scale', label: 'Saya mampu mengelola kelas secara efektif.' }
     ]
   },
   {
-    id: 'mindset', title: 'Keyakinan Guru (Mindset)', description: 'Nilai 1 (Sangat Tidak Setuju) s.d 5 (Sangat Setuju)',
+    id: 'digital', title: 'Domain D: Digital & AI Readiness', description: 'Nilai dari 1 (Sangat Tidak Setuju) s.d 5 (Sangat Setuju)',
     questions: [
-      { id: 'min_1', type: 'scale', label: 'Pendidikan karakter sama pentingnya dengan akademik' },
-      { id: 'min_2', type: 'scale', label: 'Orang tua harus dilibatkan sebagai mitra' },
-      { id: 'min_3', type: 'scale', label: 'Belajar harus relevan dengan kehidupan nyata' },
-      { id: 'min_4', type: 'scale', label: 'Siswa butuh lebih banyak pengalaman nyata' },
-      { id: 'min_5', type: 'scale', label: 'Proyek lebih efektif dibanding ujian hafalan' }
+      { id: 'dig_1', type: 'scale', label: 'Saya menggunakan teknologi digital dalam pembelajaran.' },
+      { id: 'dig_2', type: 'scale', label: 'Saya pernah menggunakan AI untuk membantu pekerjaan guru.' },
+      { id: 'dig_3', type: 'scale', label: 'Saya mampu mengevaluasi hasil yang diberikan AI secara kritis.' },
+      { id: 'dig_4', type: 'scale', label: 'Saya memahami etika penggunaan AI dalam pendidikan.' },
+      { id: 'dig_5', type: 'scale', label: 'Saya tertarik mempelajari pemanfaatan AI untuk pembelajaran.' }
     ]
   },
   {
-    id: 'readiness', title: 'Kesiapan Implementasi', description: 'Nilai 1 (Sangat Tidak Siap) s.d 5 (Sangat Siap)',
+    id: 'kflf', title: 'Domain E: KFLF Readiness', description: 'Khairul Falah Learning Framework. Nilai 1 s.d 5',
     questions: [
-      { id: 'ready_1', type: 'scale', label: 'Saya siap mengubah gaya mengajar' },
-      { id: 'ready_2', type: 'scale', label: 'Saya siap mencoba metode asesmen baru' },
-      { id: 'ready_3', type: 'scale', label: 'Saya siap merancang proyek kokurikuler' },
-      { id: 'ready_4', type: 'scale', label: 'Saya siap menjalankan program Home Mission' },
-      { id: 'ready_5', type: 'scale', label: 'Secara keseluruhan, saya siap mengimplementasikan KAFA Framework' }
+      { id: 'kflf_1', type: 'scale', label: 'Saya memahami filosofi KFLF.' },
+      { id: 'kflf_2', type: 'scale', label: 'Saya memahami profil Insan Khairul Falah.' },
+      { id: 'kflf_3', type: 'scale', label: 'Saya memahami pentingnya life skills dalam pendidikan.' },
+      { id: 'kflf_4', type: 'scale', label: 'Saya memahami pentingnya future skills bagi peserta didik.' },
+      { id: 'kflf_5', type: 'scale', label: 'Saya memahami peran AI sebagai alat belajar dalam KFLF.' },
+      { id: 'kflf_6', type: 'scale', label: 'Saya memahami pembelajaran berbasis proyek dan dampak.' },
+      { id: 'kflf_7', type: 'scale', label: 'Saya memahami pentingnya kolaborasi antar guru dalam implementasi KFLF.' }
+    ]
+  },
+  {
+    id: 'transformation', title: 'Domain F: Transformation Readiness', description: 'Nilai dari 1 (Sangat Tidak Setuju) s.d 5 (Sangat Setuju)',
+    questions: [
+      { id: 'trans_1', type: 'scale', label: 'Saya siap mencoba pendekatan baru meskipun membutuhkan usaha tambahan.' },
+      { id: 'trans_2', type: 'scale', label: 'Saya siap berkolaborasi dengan guru lain dalam proses transformasi.' },
+      { id: 'trans_3', type: 'scale', label: 'Saya siap menerima evaluasi dan umpan balik untuk berkembang.' },
+      { id: 'trans_4', type: 'scale', label: 'Saya siap mendukung implementasi KFLF di madrasah.' },
+      { id: 'trans_5', type: 'scale', label: 'Saya siap menjadi bagian dari perubahan budaya belajar di Khairul Falah.' }
+    ]
+  },
+  {
+    id: 'closing', title: 'Komitmen & Refleksi', description: 'Langkah terakhir, mari refleksikan komitmen Anda terhadap transformasi.',
+    questions: [
+      { id: 'komitmen', type: 'scale', label: 'KOMITMEN: Saya siap menjadi bagian dari proses transformasi pendidikan di Khairul Falah.' },
+      { id: 'ref_1', type: 'textarea', label: 'Menurut Anda, tantangan terbesar yang akan Anda hadapi dalam proses transformasi pendidikan di Khairul Falah adalah?' },
+      { id: 'ref_2', type: 'textarea', label: 'Dukungan apa yang Anda harapkan dari yayasan dan pimpinan madrasah agar proses transformasi ini berhasil?' }
     ]
   }
 ];
@@ -520,42 +564,45 @@ const AssessmentWizard = ({ onComplete, isSaving }) => {
   const [answers, setAnswers] = useState({});
 
   const handleInputChange = (id, value) => setAnswers(prev => ({ ...prev, [id]: value }));
-  const handleCheckboxChange = (option) => {
-    setAnswers(prev => {
-      const list = prev.prac_list || [];
-      return { ...prev, prac_list: list.includes(option) ? list.filter(i => i !== option) : [...list, option] };
-    });
-  };
 
   const calculateResults = () => {
-    const sumScale = (prefix) => {
-      let sum = 0; let count = 0;
-      for (let i = 1; i <= 5; i++) {
-        if (answers[`${prefix}_${i}`]) { sum += parseInt(answers[`${prefix}_${i}`]); count++; }
+    const sumScale = (prefix, count) => {
+      let sum = 0; let answered = 0;
+      for (let i = 1; i <= count; i++) {
+        if (answers[`${prefix}_${i}`]) { sum += parseInt(answers[`${prefix}_${i}`]); answered++; }
       }
-      return count === 0 ? 0 : (sum / (count * 5)) * 100;
+      return answered === 0 ? 0 : (sum / (answered * 5)) * 100;
     };
 
     const scores = {
-      kma: sumScale('kma'),
-      kbc: sumScale('kbc'),
-      mindset: sumScale('min'),
-      readiness: sumScale('ready'),
-      practice: ((answers.prac_list || []).length / 7) * 100
+      mindset: sumScale('min', 5),
+      kma: sumScale('kma', 5),
+      pedagogical: sumScale('ped', 5),
+      digital: sumScale('dig', 5),
+      kflf: sumScale('kflf', 7),
+      transformation: sumScale('trans', 5)
     };
-    scores.overall = Object.values(scores).reduce((a,b)=>a+b,0) / 5;
+    
+    // Overall SIAP Score
+    scores.overall = Object.values(scores).reduce((a,b)=>a+b,0) / 6;
 
+    // Detect Weaknesses
     const weaknesses = [];
-    if (scores.kma < 70) weaknesses.push('Pemahaman KMA');
-    if (scores.kbc < 70) weaknesses.push('Kurikulum KBC');
-    if (scores.practice < 70) weaknesses.push('Praktik Mengajar');
-    if (scores.mindset < 70) weaknesses.push('Mindset Guru');
+    if (scores.mindset < 70) weaknesses.push('Mindset & Growth');
+    if (scores.kma < 70) weaknesses.push('Pemahaman KMA 1503');
+    if (scores.pedagogical < 70) weaknesses.push('Kemampuan Pedagogik');
+    if (scores.digital < 70) weaknesses.push('Literasi Digital & AI');
+    if (scores.kflf < 70) weaknesses.push('Pemahaman KFLF');
+    if (scores.transformation < 70) weaknesses.push('Kesiapan Transformasi');
 
     onComplete({ 
       name: answers.name || "Guru Tanpa Nama", 
       subject: answers.subject || "Belum Memilih", 
       experience: answers.experience || "Belum Memilih",
       scores,
+      komitmen: answers.komitmen ? (parseInt(answers.komitmen) / 5) * 100 : 0,
+      refleksi_1: answers.ref_1 || "",
+      refleksi_2: answers.ref_2 || "",
       weaknesses
     });
   };
@@ -563,18 +610,21 @@ const AssessmentWizard = ({ onComplete, isSaving }) => {
   const step = ASSESSMENT_STEPS[currentStep];
   const progress = ((currentStep) / ASSESSMENT_STEPS.length) * 100;
 
+  // Validation Check
   let canProceed = false;
   if (currentStep === 0) canProceed = answers.name && answers.subject && answers.experience;
-  else if (step.id === 'practice') canProceed = true; 
   else {
-    canProceed = step.questions.every(q => answers[q.id]);
+    canProceed = step.questions.every(q => {
+      if (q.type === 'textarea') return answers[q.id] && answers[q.id].trim().length > 0;
+      return answers[q.id] !== undefined && answers[q.id] !== '';
+    });
   }
 
   return (
     <div className="max-w-xl mx-auto w-full pb-20">
       <div className="sticky top-0 bg-gray-50/90 backdrop-blur-md z-10 pt-4 pb-6">
         <div className="flex justify-between items-end mb-3">
-          <h2 className="text-xl font-bold text-gray-900">Asesmen Mandiri</h2>
+          <h2 className="text-xl font-bold text-gray-900">Asesmen SIAP</h2>
           <span className="text-sm font-bold text-emerald-600">{Math.round(progress)}% Selesai</span>
         </div>
         <div className="bg-gray-200 rounded-full h-3 w-full overflow-hidden shadow-inner">
@@ -590,10 +640,21 @@ const AssessmentWizard = ({ onComplete, isSaving }) => {
           <div className="space-y-8">
             {step.questions.map(q => (
               <div key={q.id} className="space-y-3">
-                {q.type !== 'checkboxGroup' && <label className="block text-base font-bold text-gray-800 leading-tight">{q.label}</label>}
+                <label className={`block text-base font-bold text-gray-800 leading-tight ${q.id === 'komitmen' ? 'text-blue-700 bg-blue-50 p-4 rounded-xl' : ''}`}>
+                  {q.label}
+                </label>
                 
                 {q.type === 'text' && (
                   <input type="text" className="w-full p-4 text-lg border-2 border-gray-200 rounded-2xl focus:ring-0 focus:border-emerald-500 outline-none transition-colors bg-gray-50 focus:bg-white" placeholder="Masukkan jawaban..." value={answers[q.id] || ''} onChange={(e) => handleInputChange(q.id, e.target.value)} />
+                )}
+                
+                {q.type === 'textarea' && (
+                  <textarea 
+                    className="w-full p-4 text-base border-2 border-gray-200 rounded-2xl focus:ring-0 focus:border-emerald-500 outline-none transition-colors bg-gray-50 focus:bg-white min-h-[120px] resize-y leading-relaxed" 
+                    placeholder="Ketik jawaban Anda di sini..." 
+                    value={answers[q.id] || ''} 
+                    onChange={(e) => handleInputChange(q.id, e.target.value)} 
+                  />
                 )}
                 
                 {q.type === 'select' && (
@@ -621,23 +682,6 @@ const AssessmentWizard = ({ onComplete, isSaving }) => {
                     ))}
                   </div>
                 )}
-
-                {q.type === 'checkboxGroup' && (
-                  <div className="space-y-3">
-                    {q.options.map(opt => {
-                      const isChecked = (answers.prac_list || []).includes(opt);
-                      return (
-                        <label key={opt} className={`flex items-center p-4 rounded-2xl border-2 cursor-pointer transition-all active:scale-[0.98] ${isChecked ? 'bg-emerald-50 border-emerald-500 shadow-sm' : 'bg-gray-50 border-gray-200 hover:border-emerald-300'}`}>
-                          <input type="checkbox" className="hidden" checked={isChecked} onChange={() => handleCheckboxChange(opt)} />
-                          <div className={`w-6 h-6 rounded-md flex items-center justify-center mr-4 transition-colors ${isChecked ? 'bg-emerald-500' : 'border-2 border-gray-300 bg-white'}`}>
-                            {isChecked && <Check className="w-4 h-4 text-white" strokeWidth={3} />}
-                          </div>
-                          <span className={`text-base ${isChecked ? 'text-emerald-900 font-bold' : 'text-gray-700 font-medium'}`}>{opt}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -657,7 +701,7 @@ const AssessmentWizard = ({ onComplete, isSaving }) => {
               {isSaving ? (
                  <><RefreshCw className="w-5 h-5 mr-2 animate-spin" /> Menyimpan...</>
               ) : (
-                 <>Simpan Data <CheckCircle className="w-5 h-5 ml-1" /></>
+                 <>Kirim Data SIAP <CheckCircle className="w-5 h-5 ml-1" /></>
               )}
             </Button>
           )}
@@ -674,8 +718,8 @@ const IndividualReport = ({ result, onRetake }) => {
         <ClipboardList className="w-12 h-12" />
       </div>
       <h2 className="text-2xl font-bold text-gray-900 mb-2">Asesmen Belum Diisi</h2>
-      <p className="text-gray-500 text-base mb-8 max-w-sm">Evaluasi kesiapan Anda dalam mengimplementasikan KMA 1503 dan KBC secara mandiri, dan hasilkan laporan pribadi.</p>
-      <Button onClick={onRetake} className="w-full sm:w-auto text-lg h-14 px-8">Mulai Asesmen Sekarang</Button>
+      <p className="text-gray-500 text-base mb-8 max-w-sm">Evaluasi kesiapan Anda dalam mengimplementasikan KFLF dan KMA 1503 secara mandiri untuk melihat indeks kesiapan Anda.</p>
+      <Button onClick={onRetake} className="w-full sm:w-auto text-lg h-14 px-8">Mulai Asesmen SIAP</Button>
     </div>
   );
 
@@ -687,7 +731,7 @@ const IndividualReport = ({ result, onRetake }) => {
   return (
     <div className="space-y-6 max-w-3xl mx-auto pb-10 id-report-print">
       <div className="text-center mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Laporan Kesiapan Anda</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Laporan Hasil SIAP</h1>
         <p className="text-gray-500 text-sm">{result.name} • {result.subject}</p>
       </div>
 
@@ -704,13 +748,14 @@ const IndividualReport = ({ result, onRetake }) => {
         </h2>
         <div className="mb-6">
           <span className={`px-5 py-2 rounded-full text-sm font-bold uppercase tracking-wider border ${category.color}`}>
-            {category.label}
+            Level: {category.label}
           </span>
         </div>
         <p className="text-gray-700 font-medium max-w-md mx-auto leading-relaxed">
-          {result.scores.overall >= 81 ? "Luar biasa! Anda adalah Champion. Bagikan inspirasi praktik baik Anda ke rekan sejawat." :
-           result.scores.overall >= 61 ? "Hebat! Anda sudah di jalur yang tepat menuju implementasi penuh KMA 1503 dan KBC." :
-           result.scores.overall >= 41 ? "Tahap awal yang baik. Mari kembangkan lagi melalui kolaborasi dan pelatihan madrasah." :
+          {result.scores.overall >= 81 ? "Luar biasa! Anda adalah Agen Perubahan. Bagikan inspirasi praktik baik Anda ke rekan sejawat." :
+           result.scores.overall >= 61 ? "Hebat! Anda sudah di jalur yang tepat menuju implementasi penuh transformasi pendidikan." :
+           result.scores.overall >= 41 ? "Tahap yang baik. Mari kembangkan lagi melalui kolaborasi dan pelatihan madrasah." :
+           result.scores.overall >= 21 ? "Anda sudah mulai siap. Fokus pada area pengembangan Anda untuk terus bertumbuh." :
            "Jangan khawatir. Sekolah telah menyiapkan program pendampingan khusus untuk memastikan Anda siap dan percaya diri."}
         </p>
       </Card>
@@ -718,7 +763,7 @@ const IndividualReport = ({ result, onRetake }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="shadow-md border-gray-100">
           <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center">
-            <Activity className="w-5 h-5 mr-2 text-blue-500" /> Peta Kompetensi
+            <Activity className="w-5 h-5 mr-2 text-blue-500" /> Peta Domain SIAP
           </h3>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -739,7 +784,7 @@ const IndividualReport = ({ result, onRetake }) => {
             <ul className="text-sm font-medium text-emerald-800 space-y-3">
               {Object.entries(result.scores).filter(([k,v]) => k !== 'overall' && v >= 70).map(([k,v]) => (
                 <li key={k} className="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-emerald-100">
-                  <span className="capitalize">{k === 'kma' ? 'Pemahaman KMA' : k === 'kbc' ? 'Kurikulum KBC' : k}</span> 
+                  <span className="capitalize">{k}</span> 
                   <span className="font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">{Math.round(v)}</span>
                 </li>
               ))}
@@ -753,7 +798,7 @@ const IndividualReport = ({ result, onRetake }) => {
             <ul className="text-sm font-medium text-orange-800 space-y-3">
               {Object.entries(result.scores).filter(([k,v]) => k !== 'overall' && v < 70).map(([k,v]) => (
                 <li key={k} className="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-orange-100">
-                  <span className="capitalize">{k === 'kma' ? 'Pemahaman KMA' : k === 'kbc' ? 'Kurikulum KBC' : k}</span> 
+                  <span className="capitalize">{k}</span> 
                   <span className="font-black text-orange-600 bg-orange-50 px-2 py-1 rounded-lg">{Math.round(v)}</span>
                 </li>
               ))}
@@ -762,7 +807,34 @@ const IndividualReport = ({ result, onRetake }) => {
           </Card>
         </div>
       </div>
-      <Button onClick={onRetake} variant="outline" className="w-full h-14 text-lg mt-4 print:hidden">Isi Ulang Asesmen</Button>
+      
+      {/* Bagian Komitmen dan Refleksi */}
+      <Card className="shadow-md border-gray-100 bg-blue-50/30">
+        <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+          <Brain className="w-5 h-5 mr-2 text-blue-500" /> Refleksi & Komitmen Transformasi
+        </h3>
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Indeks Komitmen</p>
+            <div className="flex items-center gap-3">
+               <div className="h-4 flex-1 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-500 rounded-full" style={{ width: `${result.komitmen || 0}%`}}></div>
+               </div>
+               <span className="font-black text-blue-700">{result.komitmen || 0}%</span>
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-gray-100">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Tantangan Terbesar</p>
+            <p className="text-sm text-gray-800 italic leading-relaxed">"{result.refleksi_1 || '-'}"</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-gray-100">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Harapan Dukungan</p>
+            <p className="text-sm text-gray-800 italic leading-relaxed">"{result.refleksi_2 || '-'}"</p>
+          </div>
+        </div>
+      </Card>
+
+      <Button onClick={onRetake} variant="outline" className="w-full h-14 text-lg mt-4 print:hidden">Isi Ulang Asesmen SIAP</Button>
     </div>
   );
 };
@@ -775,7 +847,11 @@ const ProfileSettings = ({ appRole, userUID, onLogout, setActiveTab, teachersDat
       return;
     }
     
-    const headers = ["Nama Guru", "Mata Pelajaran", "Pengalaman", "KMA 1503", "Kurikulum KBC", "Praktik Belajar", "Mindset", "Kesiapan", "Skor Akhir"];
+    const headers = [
+      "Nama Guru", "Mata Pelajaran", "Pengalaman", 
+      "Skor Mindset", "Skor KMA 1503", "Skor Pedagogik", "Skor Digital/AI", "Skor KFLF", "Skor Transformasi", 
+      "Skor Akhir (SIAP)", "Komitmen", "Tantangan Terbesar", "Harapan Dukungan"
+    ];
     const csvRows = [headers.join(",")]; 
     
     teachersData.forEach(t => {
@@ -783,12 +859,16 @@ const ProfileSettings = ({ appRole, userUID, onLogout, setActiveTab, teachersDat
         `"${t.name}"`, 
         `"${t.subject}"`,
         `"${t.experience}"`,
-        Math.round(t.scores.kma),
-        Math.round(t.scores.kbc),
-        Math.round(t.scores.practice),
-        Math.round(t.scores.mindset),
-        Math.round(t.scores.readiness),
-        Math.round(t.scores.overall)
+        Math.round(t.scores.mindset || 0),
+        Math.round(t.scores.kma || 0),
+        Math.round(t.scores.pedagogical || 0),
+        Math.round(t.scores.digital || 0),
+        Math.round(t.scores.kflf || 0),
+        Math.round(t.scores.transformation || 0),
+        Math.round(t.scores.overall || 0),
+        Math.round(t.komitmen || 0),
+        `"${(t.refleksi_1 || "").replace(/"/g, '""')}"`,
+        `"${(t.refleksi_2 || "").replace(/"/g, '""')}"`
       ];
       csvRows.push(row.join(","));
     });
@@ -797,7 +877,7 @@ const ProfileSettings = ({ appRole, userUID, onLogout, setActiveTab, teachersDat
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "Data_Kesiapan_Guru_KTRI.csv");
+    link.setAttribute("download", "Data_Kesiapan_Guru_SIAP.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -806,11 +886,11 @@ const ProfileSettings = ({ appRole, userUID, onLogout, setActiveTab, teachersDat
   const adminMenuItems = [
     { icon: Users, label: 'Coaching Candidates', color: 'text-orange-500', bg: 'bg-orange-100', action: () => setActiveTab('champion') },
     { icon: Map, label: 'Readiness Map', color: 'text-purple-500', bg: 'bg-purple-100', action: () => setActiveTab('readiness') },
-    { icon: Download, label: 'Export Data (Excel/CSV)', color: 'text-emerald-500', bg: 'bg-emerald-100', action: handleExportCSV },
+    { icon: Download, label: 'Export Data SIAP (CSV)', color: 'text-emerald-500', bg: 'bg-emerald-100', action: handleExportCSV },
   ];
 
   const guruMenuItems = [
-    { icon: FileText, label: 'Cetak Laporan Saya (PDF)', color: 'text-blue-500', bg: 'bg-blue-100', action: () => { window.print(); } },
+    { icon: FileText, label: 'Cetak Laporan SIAP (PDF)', color: 'text-blue-500', bg: 'bg-blue-100', action: () => { window.print(); } },
   ];
 
   const items = appRole === 'admin' ? adminMenuItems : guruMenuItems;
@@ -820,8 +900,8 @@ const ProfileSettings = ({ appRole, userUID, onLogout, setActiveTab, teachersDat
       <h1 className="text-2xl font-bold text-gray-900 mb-2">Akun & Pengaturan</h1>
       
       <Card className="flex items-center shadow-md border-0 bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
-        <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mr-5 backdrop-blur-sm border border-white/30">
-          <User className="w-8 h-8 text-white" />
+        <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mr-5 backdrop-blur-sm border border-white/30 p-2">
+          <SiapLogo className="w-full h-full brightness-0 invert opacity-90" />
         </div>
         <div>
           <h2 className="text-xl font-bold">{appRole === 'admin' ? 'Kepala Madrasah' : 'Akun Guru'}</h2>
@@ -873,12 +953,12 @@ const Layout = ({ appRole, activeTab, setActiveTab, children }) => {
     <div className="flex h-screen bg-gray-50 font-sans print:bg-white print:block print:h-auto">
       <aside className="hidden lg:flex flex-col w-72 bg-white border-r border-gray-200 h-screen fixed top-0 left-0 z-40 print:hidden">
         <div className="p-6 border-b border-gray-100 flex items-center gap-3">
-          <div className="bg-emerald-600 p-2.5 rounded-2xl shadow-md shadow-emerald-200">
-            <Brain className="w-7 h-7 text-white" />
+          <div className="bg-emerald-50 p-2.5 rounded-2xl shadow-sm">
+            <SiapLogo className="w-8 h-8" />
           </div>
           <div>
-            <h1 className="font-black text-gray-900 text-xl leading-tight">KTRI</h1>
-            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">KAFA Framework</p>
+            <h1 className="font-black text-gray-900 text-2xl leading-none tracking-tight">SIAP</h1>
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-1 leading-none">Khairul Falah</p>
           </div>
         </div>
         
@@ -912,10 +992,10 @@ const Layout = ({ appRole, activeTab, setActiveTab, children }) => {
 
         <header className="lg:hidden bg-white/90 backdrop-blur-md h-16 border-b border-gray-100 flex items-center justify-between px-4 shrink-0 sticky top-0 z-30 shadow-sm print:hidden">
           <div className="flex items-center">
-             <div className="bg-emerald-600 p-1.5 rounded-xl mr-3">
-               <Brain className="w-5 h-5 text-white" />
+             <div className="mr-3 p-1.5 bg-emerald-50 rounded-xl">
+               <SiapLogo className="w-6 h-6" />
              </div>
-             <div className="font-bold text-lg text-gray-900">KTRI Mobile</div>
+             <div className="font-bold text-lg text-gray-900 tracking-tight">SIAP Mobile</div>
           </div>
           <Database className="w-5 h-5 text-emerald-500" />
         </header>
@@ -1052,11 +1132,14 @@ export default function App() {
               <Brain className="w-full h-full transform scale-150 -rotate-12 translate-x-10 translate-y-10" />
             </div>
             <div className="relative z-10">
-              <div className="w-20 h-20 bg-white rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-emerald-900/20 mb-6">
-                <Brain className="w-10 h-10 text-emerald-600" />
+              <div className="w-24 h-24 bg-white rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-emerald-900/20 mb-6 p-4">
+                <SiapLogo className="w-full h-full" />
               </div>
-              <h1 className="text-3xl font-black text-white mb-2">KTRI Cloud</h1>
-              <p className="text-emerald-100 text-sm font-medium">KAFA Teacher Readiness Index</p>
+              <h1 className="text-3xl font-black text-white mb-2 tracking-tight">SIAP</h1>
+              <p className="text-emerald-100 text-sm font-medium">Sistem Indeks Asesmen Pendidik</p>
+              <p className="text-emerald-200/90 text-[10px] uppercase tracking-widest mt-3 font-bold mx-auto leading-relaxed border-t border-emerald-500/30 pt-3">
+                Mengukur Kesiapan Guru untuk Bertumbuh, Beradaptasi, dan Bertransformasi
+              </p>
             </div>
           </div>
           
@@ -1080,7 +1163,6 @@ export default function App() {
                    className={`w-full p-4 text-center text-3xl tracking-widest font-black border-2 rounded-2xl outline-none transition-colors ${pinError ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 focus:border-emerald-500 bg-gray-50 focus:bg-white'}`}
                    value={pin}
                    onChange={(e) => { 
-                     // Hanya izinkan angka yang masuk
                      const onlyNumbers = e.target.value.replace(/[^0-9]/g, '');
                      setPin(onlyNumbers); 
                      setPinError(false); 
@@ -1094,12 +1176,12 @@ export default function App() {
                </div>
             ) : (
                <>
-                 <p className="text-center text-gray-500 font-medium text-sm mb-6">Pilih Role Akses Sistem</p>
+                 <p className="text-center text-gray-500 font-medium text-sm mb-6">Pilih Hak Akses SIAP</p>
                  <Button className="w-full h-14 text-base" onClick={() => setShowAdminPin(true)}>
-                   <ShieldAlert className="w-5 h-5 mr-2" /> Login Kepala Madrasah
+                   <ShieldAlert className="w-5 h-5 mr-2" /> Login Admin / Pimpinan
                  </Button>
                  <Button variant="outline" className="w-full h-14 text-base" onClick={() => { setAppRole('guru'); setActiveTab(myResult ? 'dashboard' : 'assessment'); }}>
-                   <User className="w-5 h-5 mr-2" /> Login Guru
+                   <User className="w-5 h-5 mr-2" /> Mulai Asesmen Guru
                  </Button>
                </>
             )}

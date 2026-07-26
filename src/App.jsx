@@ -8,12 +8,15 @@ import {
   Home, ClipboardList, Map, Award, User, LogOut, Settings, Download, 
   ChevronRight, ChevronLeft, CheckCircle, AlertTriangle, Brain, 
   Target, Activity, Users, FileText, FileSpreadsheet, Check, ShieldAlert,
-  Database, RefreshCw, Lock, ChevronDown
+  Database, RefreshCw, Lock, ChevronDown, Mail
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
 import { getAnalytics } from "firebase/analytics";
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { 
+  getAuth, signInAnonymously, onAuthStateChanged, 
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut 
+} from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -52,8 +55,6 @@ const getCategory = (score) => {
 
 const SiapLogo = ({ className = "w-10 h-10" }) => {
   const [error, setError] = useState(false);
-  // TODO: Ganti /logo-siap.png dengan file yang diupload ke folder public jika belum ada.
-  // Akan fallback ke Icon otomatis jika gambar gagal dimuat.
   if (error) return <CheckCircle className={`text-emerald-600 ${className}`} />;
   return <img src="/logo-siap.png" alt="Logo SIAP" className={`object-contain ${className}`} onError={() => setError(true)} />;
 };
@@ -70,7 +71,7 @@ const Badge = ({ children, colorClass }) => (
   </span>
 );
 
-const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false, icon: Icon }) => {
+const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false, icon: Icon, type = "button" }) => {
   const baseStyle = "flex items-center justify-center font-semibold rounded-2xl transition-all active:scale-[0.98] min-h-[52px] px-5 w-full sm:w-auto";
   const variants = {
     primary: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200 disabled:bg-emerald-300",
@@ -80,7 +81,7 @@ const Button = ({ children, onClick, variant = 'primary', className = "", disabl
   };
   
   return (
-    <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>
+    <button type={type} onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>
       {Icon && <Icon className="w-5 h-5 mr-2" />}
       {children}
     </button>
@@ -166,7 +167,7 @@ const AdminDashboard = ({ data }) => {
         <Card className="text-center py-16 border-dashed border-2 border-gray-300">
           <Database className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-gray-700 mb-2">Belum Ada Data Asesmen</h3>
-          <p className="text-gray-500 max-w-sm mx-auto">Silakan minta guru-guru untuk login dan mengisi asesmen SIAP. Data akan muncul di sini secara otomatis.</p>
+          <p className="text-gray-500 max-w-sm mx-auto">Silakan minta guru-guru untuk membuat akun dan mengisi asesmen SIAP. Data akan muncul di sini secara otomatis.</p>
         </Card>
       ) : (
         <>
@@ -391,10 +392,17 @@ const ReadinessMap = ({ data }) => {
 };
 
 const ChampionModule = ({ data }) => {
-  const champions = data.filter(t => t.scores.overall >= 81).sort((a,b) => b.scores.overall - a.scores.overall);
-  const coaching = data.filter(t => t.scores.overall <= 60).sort((a,b) => a.scores.overall - b.scores.overall);
+  const validData = data.filter(t => t?.scores?.overall !== undefined);
+  
+  const champions = validData.filter(t => t.scores.overall >= 81).sort((a,b) => b.scores.overall - a.scores.overall);
+  
+  const potentialChampions = champions.length === 0 
+    ? validData.filter(t => t.scores.overall >= 61 && t.scores.overall < 81).sort((a,b) => b.scores.overall - a.scores.overall).slice(0, 3)
+    : [];
 
-  if (data.length === 0) return (
+  const coaching = validData.filter(t => t.scores.overall < 81).sort((a,b) => a.scores.overall - b.scores.overall);
+
+  if (validData.length === 0) return (
     <div className="flex items-center justify-center h-[50vh] text-gray-400 font-bold">Belum Ada Data Asesmen</div>
   );
 
@@ -418,8 +426,17 @@ const ChampionModule = ({ data }) => {
           </div>
           
           <div className="space-y-3">
-            {champions.length === 0 && <p className="text-gray-500 text-center py-8">Belum ada Agen Perubahan</p>}
-            {champions.map((c, i) => (
+            {champions.length === 0 && potentialChampions.length === 0 && (
+              <p className="text-gray-500 text-center py-8">Belum ada Agen Perubahan</p>
+            )}
+            
+            {champions.length === 0 && potentialChampions.length > 0 && (
+              <div className="mb-3 bg-blue-50 border border-blue-100 text-blue-700 text-xs p-2.5 rounded-xl font-bold text-center">
+                Belum ada Agen (Skor 81+). Menampilkan Kandidat Terdekat:
+              </div>
+            )}
+
+            {(champions.length > 0 ? champions : potentialChampions).map((c, i) => (
               <div key={c.userId} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-emerald-100">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg border border-emerald-200">
@@ -446,31 +463,37 @@ const ChampionModule = ({ data }) => {
             </div>
             <div>
               <h2 className="text-xl font-bold text-orange-900">Coaching Candidates</h2>
-              <p className="text-orange-700 text-xs font-medium">Prioritas pendampingan bagi yang Berkembang/Kurang</p>
+              <p className="text-orange-700 text-xs font-medium">Prioritas pendampingan bagi yang belum mencapai Agen</p>
             </div>
           </div>
           
           <div className="space-y-3">
-            {coaching.length === 0 && <p className="text-gray-500 text-center py-8">Semua guru dalam kategori Siap/Agen</p>}
-            {coaching.map((c) => (
-              <div key={c.userId} className="bg-white p-4 rounded-2xl shadow-sm border border-orange-100 flex flex-col gap-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-bold text-gray-900">{c.name}</div>
-                    <div className="text-xs text-gray-500 font-medium">{c.subject}</div>
+            {coaching.length === 0 && <p className="text-gray-500 text-center py-8">Semua guru sudah mencapai level Agen!</p>}
+            {coaching.map((c) => {
+              let badgeColor = 'bg-yellow-100 text-yellow-700 border-yellow-200';
+              if (c.scores.overall <= 40) badgeColor = 'bg-red-100 text-red-700 border-red-200';
+              else if (c.scores.overall >= 61) badgeColor = 'bg-blue-100 text-blue-700 border-blue-200';
+
+              return (
+                <div key={c.userId} className="bg-white p-4 rounded-2xl shadow-sm border border-orange-100 flex flex-col gap-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-bold text-gray-900">{c.name}</div>
+                      <div className="text-xs text-gray-500 font-medium">{c.subject}</div>
+                    </div>
+                    <Badge colorClass={badgeColor}>
+                      Skor: {Math.round(c.scores.overall)}
+                    </Badge>
                   </div>
-                  <Badge colorClass={c.scores.overall <= 40 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}>
-                    Skor: {Math.round(c.scores.overall)}
-                  </Badge>
+                  {c.weaknesses && c.weaknesses.length > 0 && (
+                    <div className="bg-orange-50 p-2.5 rounded-xl text-xs border border-orange-100/50">
+                      <span className="font-bold text-orange-800 block mb-1">Fokus Perbaikan:</span>
+                      <span className="text-orange-700">{c.weaknesses.join(', ')}</span>
+                    </div>
+                  )}
                 </div>
-                {c.weaknesses && c.weaknesses.length > 0 && (
-                  <div className="bg-orange-50 p-2 rounded-lg text-xs">
-                    <span className="font-bold text-orange-800 block mb-1">Fokus Perbaikan:</span>
-                    <span className="text-orange-700">{c.weaknesses.join(', ')}</span>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       </div>
@@ -610,7 +633,6 @@ const AssessmentWizard = ({ onComplete, isSaving }) => {
   const step = ASSESSMENT_STEPS[currentStep];
   const progress = ((currentStep) / ASSESSMENT_STEPS.length) * 100;
 
-  // Validation Check
   let canProceed = false;
   if (currentStep === 0) canProceed = answers.name && answers.subject && answers.experience;
   else {
@@ -718,7 +740,7 @@ const IndividualReport = ({ result, onRetake }) => {
         <ClipboardList className="w-12 h-12" />
       </div>
       <h2 className="text-2xl font-bold text-gray-900 mb-2">Asesmen Belum Diisi</h2>
-      <p className="text-gray-500 text-base mb-8 max-w-sm">Evaluasi kesiapan Anda dalam mengimplementasikan KFLF dan KMA 1503 secara mandiri untuk melihat indeks kesiapan Anda.</p>
+      <p className="text-gray-500 text-base mb-8 max-w-sm">Silakan mulai evaluasi SIAP Anda untuk melihat indeks kesiapan dan rekomendasi pengembangan.</p>
       <Button onClick={onRetake} className="w-full sm:w-auto text-lg h-14 px-8">Mulai Asesmen SIAP</Button>
     </div>
   );
@@ -808,10 +830,9 @@ const IndividualReport = ({ result, onRetake }) => {
         </div>
       </div>
       
-      {/* Bagian Komitmen dan Refleksi */}
       <Card className="shadow-md border-gray-100 bg-blue-50/30">
         <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-          <Brain className="w-5 h-5 mr-2 text-blue-500" /> Refleksi & Komitmen Transformasi
+          <Brain className="w-5 h-5 mr-2 text-blue-500" /> Refleksi & Komitmen
         </h3>
         <div className="space-y-4">
           <div>
@@ -840,39 +861,27 @@ const IndividualReport = ({ result, onRetake }) => {
 };
 
 const ProfileSettings = ({ appRole, userUID, onLogout, setActiveTab, teachersData }) => {
-  
   const handleExportCSV = () => {
     if (!teachersData || teachersData.length === 0) {
       alert("Belum ada data guru yang bisa diekspor!");
       return;
     }
-    
     const headers = [
       "Nama Guru", "Mata Pelajaran", "Pengalaman", 
       "Skor Mindset", "Skor KMA 1503", "Skor Pedagogik", "Skor Digital/AI", "Skor KFLF", "Skor Transformasi", 
       "Skor Akhir (SIAP)", "Komitmen", "Tantangan Terbesar", "Harapan Dukungan"
     ];
     const csvRows = [headers.join(",")]; 
-    
     teachersData.forEach(t => {
       const row = [
-        `"${t.name}"`, 
-        `"${t.subject}"`,
-        `"${t.experience}"`,
-        Math.round(t.scores.mindset || 0),
-        Math.round(t.scores.kma || 0),
-        Math.round(t.scores.pedagogical || 0),
-        Math.round(t.scores.digital || 0),
-        Math.round(t.scores.kflf || 0),
-        Math.round(t.scores.transformation || 0),
-        Math.round(t.scores.overall || 0),
-        Math.round(t.komitmen || 0),
-        `"${(t.refleksi_1 || "").replace(/"/g, '""')}"`,
-        `"${(t.refleksi_2 || "").replace(/"/g, '""')}"`
+        `"${t.name}"`, `"${t.subject}"`, `"${t.experience}"`,
+        Math.round(t.scores.mindset || 0), Math.round(t.scores.kma || 0), Math.round(t.scores.pedagogical || 0),
+        Math.round(t.scores.digital || 0), Math.round(t.scores.kflf || 0), Math.round(t.scores.transformation || 0),
+        Math.round(t.scores.overall || 0), Math.round(t.komitmen || 0),
+        `"${(t.refleksi_1 || "").replace(/"/g, '""')}"`, `"${(t.refleksi_2 || "").replace(/"/g, '""')}"`
       ];
       csvRows.push(row.join(","));
     });
-
     const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -898,7 +907,6 @@ const ProfileSettings = ({ appRole, userUID, onLogout, setActiveTab, teachersDat
   return (
     <div className="space-y-6 max-w-xl mx-auto pb-10">
       <h1 className="text-2xl font-bold text-gray-900 mb-2">Akun & Pengaturan</h1>
-      
       <Card className="flex items-center shadow-md border-0 bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
         <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mr-5 backdrop-blur-sm border border-white/30 p-2">
           <SiapLogo className="w-full h-full brightness-0 invert opacity-90" />
@@ -908,7 +916,6 @@ const ProfileSettings = ({ appRole, userUID, onLogout, setActiveTab, teachersDat
           <p className="text-emerald-100 text-xs font-medium uppercase tracking-wider mt-1">ID: {userUID?.substring(0,8)}...</p>
         </div>
       </Card>
-
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
         {items.map((item, idx) => (
           <div key={idx} onClick={item.action} className="p-4 hover:bg-gray-50 active:bg-gray-100 cursor-pointer flex items-center justify-between transition-colors">
@@ -921,12 +928,11 @@ const ProfileSettings = ({ appRole, userUID, onLogout, setActiveTab, teachersDat
             <ChevronRight className="w-5 h-5 text-gray-300" />
           </div>
         ))}
-        
         <div className="p-4 hover:bg-red-50 active:bg-red-100 cursor-pointer flex items-center transition-colors" onClick={onLogout}>
           <div className="w-10 h-10 rounded-xl flex items-center justify-center mr-4 bg-red-100">
             <LogOut className="w-5 h-5 text-red-600" />
           </div>
-          <span className="font-bold text-red-600">Ganti Role (Logout)</span>
+          <span className="font-bold text-red-600">Logout dari Sistem</span>
         </div>
       </div>
     </div>
@@ -940,13 +946,11 @@ const Layout = ({ appRole, activeTab, setActiveTab, children }) => {
     { id: 'champion', icon: Award, label: 'SDM' },
     { id: 'profile', icon: User, label: 'Profile' },
   ];
-
   const guruNav = [
     { id: 'dashboard', icon: Home, label: 'My Report' },
     { id: 'assessment', icon: ClipboardList, label: 'Asesmen' },
     { id: 'profile', icon: User, label: 'Profile' },
   ];
-
   const navItems = appRole === 'admin' ? adminNav : guruNav;
 
   return (
@@ -961,16 +965,13 @@ const Layout = ({ appRole, activeTab, setActiveTab, children }) => {
             <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-1 leading-none">Khairul Falah</p>
           </div>
         </div>
-        
         <div className="flex-1 overflow-y-auto p-4 space-y-2 mt-4">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-3">Main Menu</div>
           {navItems.map(item => {
             const isActive = activeTab === item.id;
             return (
               <button key={item.id} onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center p-3.5 rounded-2xl transition-all font-semibold ${
-                  isActive ? 'bg-emerald-50 text-emerald-700 shadow-sm border border-emerald-100' : 'text-gray-600 hover:bg-gray-100'
-                }`}
+                className={`w-full flex items-center p-3.5 rounded-2xl transition-all font-semibold ${isActive ? 'bg-emerald-50 text-emerald-700 shadow-sm border border-emerald-100' : 'text-gray-600 hover:bg-gray-100'}`}
               >
                 <item.icon className={`w-5 h-5 mr-3 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`} />
                 {item.label}
@@ -1032,71 +1033,109 @@ export default function App() {
   const [myResult, setMyResult] = useState(null); 
   const [isSaving, setIsSaving] = useState(false);
 
-  const [showAdminPin, setShowAdminPin] = useState(false);
+  // Auth States
+  const [authMode, setAuthMode] = useState('select'); // select, login, register, admin
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
   const [pin, setPin] = useState('');
-  const [pinError, setPinError] = useState(false);
 
   useEffect(() => {
-    const initAuth = async () => {
-      try { await signInAnonymously(auth); } 
-      catch (e) { console.error("Auth error:", e); }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setAuthUser);
+    // Mendengarkan perubahan sesi saat user me-refresh aplikasi
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+      if (user) {
+         if (!user.isAnonymous) {
+            // Jika user bukan anonim (berarti guru login via email), otomatis masuk dashboard
+            setAppRole('guru');
+         }
+      } else {
+         setAppRole(null);
+      }
+    });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!authUser) return;
     const colRef = collection(db, COLLECTION_NAME);
-    
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTeachersData(data);
-      
       const userDoc = data.find(d => d.userId === authUser.uid);
       if (userDoc) setMyResult(userDoc);
     }, (error) => {
       console.error("Error fetching realtime data:", error);
     });
-
     return () => unsubscribe();
   }, [authUser]);
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true); setAuthError('');
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      setAppRole('guru');
+      setActiveTab('assessment');
+    } catch(err) {
+      if (err.code === 'auth/email-already-in-use') setAuthError("Email sudah terdaftar. Silakan kembali dan Login.");
+      else if (err.code === 'auth/weak-password') setAuthError("Password minimal harus 6 karakter.");
+      else setAuthError("Gagal mendaftar. Pastikan format email benar.");
+    }
+    setAuthLoading(false);
+  }
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true); setAuthError('');
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      setAppRole('guru');
+      setActiveTab('dashboard'); // Akan otomatis diarahkan ke komponen Asesmen Belum Diisi jika tidak ada hasil
+    } catch(err) {
+      setAuthError("Email atau password salah.");
+    }
+    setAuthLoading(false);
+  }
+
+  const processAdminLogin = async () => {
+    if (pin === '123456') {
+      try {
+        await signInAnonymously(auth); // Admin menggunakan akun anonim untuk membaca semua data
+        setAppRole('admin');
+        setActiveTab('dashboard');
+        setAuthMode('select');
+        setAuthError('');
+        setPin('');
+      } catch (e) {
+        setAuthError("Gagal terhubung ke server.");
+      }
+    } else {
+      setAuthError("PIN salah! Silakan coba lagi.");
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setAppRole(null);
+    setMyResult(null);
+    setAuthMode('select');
+    setEmail('');
+    setPassword('');
+  };
 
   const handleSaveAssessment = async (resultData) => {
     if (!authUser) return;
     setIsSaving(true);
     try {
       const docRef = doc(db, COLLECTION_NAME, authUser.uid);
-      await setDoc(docRef, {
-        ...resultData,
-        userId: authUser.uid,
-        timestamp: new Date().toISOString()
-      });
+      await setDoc(docRef, { ...resultData, userId: authUser.uid, timestamp: new Date().toISOString() });
       setActiveTab('dashboard');
     } catch (e) {
       console.error("Gagal menyimpan data:", e);
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleLogout = () => {
-    setAppRole(null);
-    setMyResult(null);
-    setShowAdminPin(false);
-    setPin('');
-  };
-
-  const processAdminLogin = () => {
-    if (pin === '123456') {
-      setAppRole('admin');
-      setActiveTab('dashboard');
-      setShowAdminPin(false);
-      setPinError(false);
-      setPin('');
-    } else {
-      setPinError(true);
     }
   };
 
@@ -1111,18 +1150,15 @@ export default function App() {
       }
     } else {
       switch (activeTab) {
-        case 'dashboard': 
-          return <IndividualReport result={myResult} onRetake={() => setActiveTab('assessment')} />;
-        case 'assessment': 
-          return <AssessmentWizard onComplete={handleSaveAssessment} isSaving={isSaving} />;
-        case 'profile': 
-          return <ProfileSettings appRole={appRole} userUID={authUser?.uid} onLogout={handleLogout} setActiveTab={setActiveTab} teachersData={teachersData}/>;
-        default: 
-          return <IndividualReport result={myResult} onRetake={() => setActiveTab('assessment')} />;
+        case 'dashboard': return <IndividualReport result={myResult} onRetake={() => setActiveTab('assessment')} />;
+        case 'assessment': return <AssessmentWizard onComplete={handleSaveAssessment} isSaving={isSaving} />;
+        case 'profile': return <ProfileSettings appRole={appRole} userUID={authUser?.uid} onLogout={handleLogout} setActiveTab={setActiveTab} teachersData={teachersData}/>;
+        default: return <IndividualReport result={myResult} onRetake={() => setActiveTab('assessment')} />;
       }
     }
   };
 
+  // Layar Pilihan Login & Register
   if (!appRole || !authUser) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -1143,47 +1179,83 @@ export default function App() {
             </div>
           </div>
           
-          <div className="p-8 space-y-4">
-            {!authUser ? (
-               <div className="text-center text-gray-500 py-4 flex flex-col items-center">
-                  <RefreshCw className="w-8 h-8 animate-spin text-emerald-500 mb-2"/>
-                  Menghubungkan ke Database...
+          <div className="p-8 space-y-4 relative min-h-[300px]">
+            {authMode === 'select' && (
+               <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                 <p className="text-center text-gray-500 font-medium text-sm mb-6">Pilih Opsi Masuk</p>
+                 <Button className="w-full h-14 text-base" onClick={() => { setAuthMode('login'); setAuthError(''); }}>
+                   <User className="w-5 h-5 mr-2" /> Login Guru
+                 </Button>
+                 <Button variant="outline" className="w-full h-14 text-base" onClick={() => { setAuthMode('register'); setAuthError(''); }}>
+                   Buat Akun Baru
+                 </Button>
+                 <div className="pt-4 border-t border-gray-100 text-center">
+                    <button onClick={() => { setAuthMode('admin'); setAuthError(''); }} className="text-sm font-bold text-gray-400 hover:text-emerald-600 transition-colors flex items-center justify-center w-full">
+                      <ShieldAlert className="w-4 h-4 mr-1.5" /> Masuk sebagai Admin / Pimpinan
+                    </button>
+                 </div>
                </div>
-            ) : showAdminPin ? (
+            )}
+
+            {(authMode === 'login' || authMode === 'register') && (
+               <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                 <div className="flex items-center justify-between mb-2">
+                   <h3 className="font-bold text-gray-900">{authMode === 'login' ? 'Login ke Akun Anda' : 'Buat Akun Baru'}</h3>
+                 </div>
+                 
+                 <div className="space-y-3">
+                   <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <input type="email" required placeholder="Alamat Email" 
+                             className="w-full pl-12 pr-4 py-3.5 text-base font-medium border-2 border-gray-200 rounded-2xl focus:border-emerald-500 bg-gray-50 focus:bg-white outline-none transition-colors"
+                             value={email} onChange={e=>setEmail(e.target.value)} />
+                   </div>
+                   <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <input type="password" required minLength="6" placeholder="Password (Minimal 6 karakter)" 
+                             className="w-full pl-12 pr-4 py-3.5 text-base font-medium border-2 border-gray-200 rounded-2xl focus:border-emerald-500 bg-gray-50 focus:bg-white outline-none transition-colors"
+                             value={password} onChange={e=>setPassword(e.target.value)} />
+                   </div>
+                 </div>
+
+                 {authError && <p className="text-red-500 text-xs text-center font-bold">{authError}</p>}
+                 
+                 <Button type="submit" disabled={authLoading} className="w-full h-14 text-base mt-2">
+                   {authLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : (authMode === 'login' ? 'Masuk' : 'Daftar Sekarang')}
+                 </Button>
+                 
+                 <div className="text-center mt-2">
+                   <button type="button" onClick={() => setAuthMode('select')} className="text-sm font-semibold text-gray-500 hover:text-gray-900">
+                     Kembali
+                   </button>
+                 </div>
+               </form>
+            )}
+
+            {authMode === 'admin' && (
                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
                  <div className="flex items-center justify-between mb-2">
                    <h3 className="font-bold text-gray-900">Masukkan PIN Admin</h3>
-                   <button onClick={() => { setShowAdminPin(false); setPinError(false); setPin(''); }} className="text-sm font-semibold text-gray-500 hover:text-gray-900">Batal</button>
+                   <button onClick={() => { setAuthMode('select'); setAuthError(''); setPin(''); }} className="text-sm font-semibold text-gray-500 hover:text-gray-900">Batal</button>
                  </div>
                  <input 
                    type="password" 
                    inputMode="numeric"
                    maxLength="6"
                    placeholder="••••••" 
-                   className={`w-full p-4 text-center text-3xl tracking-widest font-black border-2 rounded-2xl outline-none transition-colors ${pinError ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 focus:border-emerald-500 bg-gray-50 focus:bg-white'}`}
+                   className={`w-full p-4 text-center text-3xl tracking-widest font-black border-2 rounded-2xl outline-none transition-colors ${authError ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 focus:border-emerald-500 bg-gray-50 focus:bg-white'}`}
                    value={pin}
                    onChange={(e) => { 
-                     const onlyNumbers = e.target.value.replace(/[^0-9]/g, '');
-                     setPin(onlyNumbers); 
-                     setPinError(false); 
+                     setPin(e.target.value.replace(/[^0-9]/g, '')); 
+                     setAuthError(''); 
                    }}
                    onKeyDown={(e) => e.key === 'Enter' && processAdminLogin()}
                  />
-                 {pinError && <p className="text-red-500 text-xs text-center font-semibold">PIN salah! Silakan coba lagi.</p>}
+                 {authError && <p className="text-red-500 text-xs text-center font-bold">{authError}</p>}
                  <Button className="w-full h-14 text-base mt-2" onClick={processAdminLogin}>
                    <Lock className="w-5 h-5 mr-2" /> Masuk Dashboard
                  </Button>
                </div>
-            ) : (
-               <>
-                 <p className="text-center text-gray-500 font-medium text-sm mb-6">Pilih Hak Akses SIAP</p>
-                 <Button className="w-full h-14 text-base" onClick={() => setShowAdminPin(true)}>
-                   <ShieldAlert className="w-5 h-5 mr-2" /> Login Admin / Pimpinan
-                 </Button>
-                 <Button variant="outline" className="w-full h-14 text-base" onClick={() => { setAppRole('guru'); setActiveTab(myResult ? 'dashboard' : 'assessment'); }}>
-                   <User className="w-5 h-5 mr-2" /> Mulai Asesmen Guru
-                 </Button>
-               </>
             )}
           </div>
         </div>

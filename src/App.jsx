@@ -855,7 +855,14 @@ const IndividualReport = ({ result, onRetake }) => {
         </div>
       </Card>
 
-      <Button onClick={onRetake} variant="outline" className="w-full h-14 text-lg mt-4 print:hidden">Isi Ulang Asesmen SIAP</Button>
+      <div className="flex flex-col sm:flex-row gap-4 mt-8 print:hidden">
+        <Button onClick={() => window.print()} className="flex-1 h-14 text-lg bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-200 border-none">
+          <FileText className="w-5 h-5 mr-2" /> Cetak Laporan (PDF)
+        </Button>
+        <Button onClick={onRetake} variant="outline" className="flex-1 h-14 text-lg bg-white">
+          <RefreshCw className="w-5 h-5 mr-2" /> Isi Ulang Asesmen
+        </Button>
+      </div>
     </div>
   );
 };
@@ -898,9 +905,7 @@ const ProfileSettings = ({ appRole, userUID, onLogout, setActiveTab, teachersDat
     { icon: Download, label: 'Export Data SIAP (CSV)', color: 'text-emerald-500', bg: 'bg-emerald-100', action: handleExportCSV },
   ];
 
-  const guruMenuItems = [
-    { icon: FileText, label: 'Cetak Laporan SIAP (PDF)', color: 'text-blue-500', bg: 'bg-blue-100', action: () => { window.print(); } },
-  ];
+  const guruMenuItems = [];
 
   const items = appRole === 'admin' ? adminMenuItems : guruMenuItems;
 
@@ -1079,9 +1084,11 @@ export default function App() {
       setAppRole('guru');
       setActiveTab('assessment');
     } catch(err) {
+      console.error("Register error:", err);
       if (err.code === 'auth/email-already-in-use') setAuthError("Email sudah terdaftar. Silakan kembali dan Login.");
       else if (err.code === 'auth/weak-password') setAuthError("Password minimal harus 6 karakter.");
-      else setAuthError("Gagal mendaftar. Pastikan format email benar.");
+      else if (err.code === 'auth/operation-not-allowed') setAuthError("Fitur Login Email belum diaktifkan di Firebase Console!");
+      else setAuthError(`Gagal: ${err.message}`);
     }
     setAuthLoading(false);
   }
@@ -1094,7 +1101,9 @@ export default function App() {
       setAppRole('guru');
       setActiveTab('dashboard'); // Akan otomatis diarahkan ke komponen Asesmen Belum Diisi jika tidak ada hasil
     } catch(err) {
-      setAuthError("Email atau password salah.");
+      console.error("Login error:", err);
+      if (err.code === 'auth/operation-not-allowed') setAuthError("Fitur Login Email belum diaktifkan di Firebase Console!");
+      else setAuthError("Email tidak terdaftar atau password salah.");
     }
     setAuthLoading(false);
   }

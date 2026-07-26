@@ -1,0 +1,5 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Pastikan tidak ada kode CSS bawaan Vite yang tertinggal di sini */
